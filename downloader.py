@@ -10,14 +10,6 @@ import logging
 import pycurl, certifi
 import config, comm
 
-proxy = {
-  'url': config.__proxyurl__,
-  'port': config.__proxyport__,
-  'type': config.__proxytype__
-}
-
-operatorlist = {'USA': {'AT&T': '31038', 'Sprint': '31002', 'T-Mobile': '31020'},}
-
 email = config.__email__
 passwd = config.__passwd__
 deviceid = config.__device_id__
@@ -28,7 +20,13 @@ sdklevel = config.__sdklevel__
 scriptpath = config.__scriptpath__
 apkdllist = config.__apkdllist__
 apkdllistpath = os.path.join(scriptpath, apkdllist)
+proxy = {
+  'url': config.__proxyurl__,
+  'port': config.__proxyport__,
+  'type': config.__proxytype__
+}
 
+operatorlist = {'USA': {'AT&T': '31038', 'Sprint': '31002', 'T-Mobile': '31020'},}
 googletoken = ''
 request = ''
 
@@ -39,30 +37,28 @@ except ImportError:
     # python 2
     from urllib import urlencode
 
-def download_apk(packagename):
-  fun = 'download_apk'
-  l(fun, 'Downloading '+ packagename +' from Google Play...')
-  apk_url = get_apk_url(packagename)
-  real_url = apk_url.split('#')[0]
-  cookies = 'MarketDA='+ apk_url.split('#')[1]
-  #print real_url
-  #print cookies
-
+def curl_request(url, method, ua, header, postdata, cookie):
   c = pycurl.Curl()
 
   b = StringIO.StringIO()
   c.setopt(c.WRITEFUNCTION, b.write)
 
-  c.setopt(c.URL, real_url)
+  c.setopt(c.URL, url)
   c.setopt(c.SSL_VERIFYPEER, 0)
   c.setopt(c.SSL_VERIFYHOST, 0)
   c.setopt(c.CAINFO, certifi.where())
   c.setopt(c.FOLLOWLOCATION, 1)
   c.setopt(c.CONNECTTIMEOUT, 60)
   c.setopt(c.TIMEOUT, 300)
-  c.setopt(c.USERAGENT, 'AndroidDownloadManager/4.4.2 (Linux; U; Android 4.4.2; Galaxy Nexus Build/JRO03E)')
-  c.setopt(c.HTTPHEADER, ['Accept-Encoding:'])
-  c.setopt(c.COOKIE, cookies)
+  c.setopt(c.USERAGENT, ua)
+  c.setopt(c.HTTPHEADER, header)
+
+  if cookie:
+      c.setopt(c.COOKIE, cookie)
+
+  if method == 'POST':
+    postfields = urlencode(postdata)
+    c.setopt(c.POSTFIELDS, postfields)
 
   if(proxy['url']):
     c.setopt(c.PROXY, proxy['url'])
@@ -76,15 +72,32 @@ def download_apk(packagename):
       proxytype = c.PROXYTYPE_HTTP
     c.setopt(c.PROXYTYPE, proxytype)
 
-  try:
     c.perform()
-    print str(c.getinfo(c.HTTP_CODE))
+    httpresponse = b.getvalue()
+    httpcode = c.getinfo(c.HTTP_CODE)
+    c.close()
+    return (httpcode, httpresponse)
+
+
+def download_apk(packagename):
+  fun = 'download_apk'
+  l(fun, 'Downloading '+ packagename +' from Google Play...')
+  apk_url = get_apk_url(packagename)
+  real_url = apk_url.split('#')[0]
+  cookies = 'MarketDA='+ apk_url.split('#')[1]
+
+  try:
+
+    ua = 'AndroidDownloadManager/4.4.2 (Linux; U; Android 4.4.2; Galaxy Nexus Build/JRO03E)'
+    header = ['Accept-Encoding:']
+    x, y = curl_request(real_url, 'GET', ua, header, {}, cookies)
+
+    print str(x)
     packageapk = packagename + '.apk'
     packagepath = os.path.join(scriptpath, 'apk', packageapk)
     with open(packagepath,'wb') as op:
-      op.write(b.getvalue())
+      op.write(y)
     validate_apk(packageapk)
-    c.close()
     l(fun, 'Downloaded '+ packagename +' from Google Play')
     l(fun, '-----------------------------------------------------------------------------------')
   except Exception, ex:
@@ -124,19 +137,10 @@ def get_apk_url(packagename):
   l(fun, 'Fecthing APK URL ['+ packagename +']:')
   request = generate_request(packagename)
   if len(request):
-    c = pycurl.Curl()
-    b = StringIO.StringIO()
-    c.setopt(c.WRITEFUNCTION, b.write)
-    c.setopt(c.URL, 'https://android.clients.google.com/market/api/ApiRequest')
-    c.setopt(c.SSL_VERIFYPEER, 0)
-    c.setopt(c.SSL_VERIFYHOST, 0)
-    c.setopt(c.CAINFO, certifi.where())
-    c.setopt(c.FOLLOWLOCATION, 1)
-    c.setopt(c.CONNECTTIMEOUT, 60)
-    c.setopt(c.TIMEOUT, 300)
-    c.setopt(c.USERAGENT, 'Android-Finsky/3.7.13 (api=3,versionCode=8013013,sdk=16,device=crespo,hardware=herring,product=soju)')
+    url = 'https://android.clients.google.com/market/api/ApiRequest'
+    ua = 'Android-Finsky/3.7.13 (api=3,versionCode=8013013,sdk=16,device=crespo,hardware=herring,product=soju)'
 
-    c.setopt(c.HTTPHEADER, ['Content-Type: application/x-www-form-urlencoded',
+    header = ['Content-Type: application/x-www-form-urlencoded',
                            'Accept-Language: en_US',
                            'Authorization: GoogleLogin auth=%s' %googletoken,
       'X-DFE-Enabled-Experiments: cl:billing.select_add_instrument_by_default',
@@ -146,41 +150,26 @@ def get_apk_url(packagename):
       'X-DFE-SmallestScreenWidthDp: 480',
       'X-DFE-Filter-Level: 3',
       'Accept-Encoding: ',
-      'Host: android.clients.google.com'])
+      'Host: android.clients.google.com']
 
-    post_data = {
+    postdata = {
       'version': 2,
       'request': request
     }
 
-    postfields = urlencode(post_data)
-    c.setopt(c.POSTFIELDS, postfields)
-
-    if(proxy['url']):
-      c.setopt(c.PROXY, proxy['url'])
-      c.setopt(c.PROXYPORT, int(proxy['port']))
-      proxytype = ''
-      if proxy['type'] == 'socks5':
-        proxytype = c.PROXYTYPE_SOCKS5
-      elif proxy['type'] == 'socks4':
-        proxytype = c.PROXYTYPE_SOCKS4
-      elif proxy['type'] == 'https' or proxy['type'] == 'https':
-        proxytype = c.PROXYTYPE_HTTP
-      c.setopt(c.PROXYTYPE, proxytype)
-
     try:
-      c.perform()
-      if c.getinfo(c.HTTP_CODE) == 429:
+      x, y = curl_request(url, 'POST', ua, header, postdata, '')
+
+      if x == 429:
         raise Exception('Too many request')
-      elif c.getinfo(c.HTTP_CODE) == 403:
+      elif x == 403:
           raise Exception('Forbidden')
-      elif c.getinfo(c.HTTP_CODE) == 401:
+      elif x == 401:
           raise Exception('Unauthorized')
-      elif c.getinfo(c.HTTP_CODE) != 200:
-          l(fun, str(c.getinfo(c.HTTP_CODE)))
+      elif x != 200:
+          l(fun, str(x))
           raise Exception('Unexpected HTTP Status Code')
-      gzipped_content = b.getvalue()
-      c.close()
+      gzipped_content = y
       response = zlib.decompress(gzipped_content, 16 + zlib.MAX_WBITS)
       dl_url = ''
       dl_cookie = ''
@@ -231,47 +220,21 @@ def generate_request(packagename):
 def get_google_token():
   fun = 'get_google_token'
 
-  c = pycurl.Curl()
-
-  b = StringIO.StringIO()
-  c.setopt(c.WRITEFUNCTION, b.write)
-
-  c.setopt(c.URL, 'https://www.google.com/accounts/ClientLogin')
-  c.setopt(c.SSL_VERIFYPEER, 0)
-  c.setopt(c.SSL_VERIFYHOST, 0)
-  c.setopt(c.CAINFO, certifi.where())
-  c.setopt(c.FOLLOWLOCATION, 1)
-  c.setopt(c.CONNECTTIMEOUT, 60)
-  c.setopt(c.TIMEOUT, 300)
-  c.setopt(c.USERAGENT, 'AndroidDownloadManager/4.4.2 (Linux; U; Android 4.4.2; Galaxy Nexus Build/JRO03E)')
-  c.setopt(c.HTTPHEADER, ['Content-Type: application/x-www-form-urlencoded'])
-
-  post_data = {
-    'Email': email,
-    'Passwd': passwd,
-    'service': 'androidsecure',
-    'accountType': 'HOSTED_OR_GOOGLE'
-  }
-
-  postfields = urlencode(post_data)
-  c.setopt(c.POSTFIELDS, postfields)
-
-  if(proxy['url']):
-    c.setopt(c.PROXY, proxy['url'])
-    c.setopt(c.PROXYPORT, int(proxy['port']))
-    proxytype = ''
-    if proxy['type'] == 'socks5':
-      proxytype = c.PROXYTYPE_SOCKS5
-    elif proxy['type'] == 'socks4':
-      proxytype = c.PROXYTYPE_SOCKS4
-    elif proxy['type'] == 'https' or proxy['type'] == 'https':
-      proxytype = c.PROXYTYPE_HTTP
-    c.setopt(c.PROXYTYPE, proxytype)
-
   try:
     l(fun, 'Getting account token:')
-    c.perform()
-    html = b.getvalue().split('\n')
+
+    url = 'https://www.google.com/accounts/ClientLogin'
+    ua = 'AndroidDownloadManager/4.4.2 (Linux; U; Android 4.4.2; Galaxy Nexus Build/JRO03E)'
+    header = ['Content-Type: application/x-www-form-urlencoded']
+    postdata = {
+        'Email': email,
+        'Passwd': passwd,
+        'service': 'androidsecure',
+        'accountType': 'HOSTED_OR_GOOGLE'
+    }
+    x, y = curl_request(url, 'POST', ua, header, postdata, '')
+
+    html = y.split('\n')
     if html[0] == 'Error=BadAuthentication':
         l(fun, 'Error=BadAuthentication ----- FAIL')
         sys.exit(0)
@@ -287,47 +250,23 @@ def get_google_token():
   except Exception, ex:
     l(fun, str(ex))
     l(fun, 'Get account token ----- FAIL')
-  c.close()
 
 def url_connection(url):
   fun = 'connect_url'
-
-  c = pycurl.Curl()
-  c.setopt(c.URL, url)
-  c.setopt(c.SSL_VERIFYPEER, 0)
-  c.setopt(c.SSL_VERIFYHOST, 0)
-  c.setopt(c.CAINFO, certifi.where())
-  c.setopt(c.FOLLOWLOCATION, 1)
-  c.setopt(c.CONNECTTIMEOUT, 60)
-  c.setopt(c.TIMEOUT, 300)
-  c.setopt(c.USERAGENT, 'AndroidDownloadManager/4.4.2 (Linux; U; Android 4.4.2; Galaxy Nexus Build/JRO03E)')
-
-  if(proxy['url']):
-    c.setopt(c.PROXY, proxy['url'])
-    c.setopt(c.PROXYPORT, int(proxy['port']))
-    proxytype = ''
-    if proxy['type'] == 'socks5':
-      proxytype = c.PROXYTYPE_SOCKS5
-    elif proxy['type'] == 'socks4':
-      proxytype = c.PROXYTYPE_SOCKS4
-    elif proxy['type'] == 'https' or proxy['type'] == 'https':
-      proxytype = c.PROXYTYPE_HTTP
-    c.setopt(c.PROXYTYPE, proxytype)
-
   try:
     l(fun, 'Connecting ' + url)
-    c.perform()
+    ua = 'AndroidDownloadManager/4.4.2 (Linux; U; Android 4.4.2; Galaxy Nexus Build/JRO03E)'
+    x, y = curl_request(url, 'GET', ua, [], {}, '')
   except Exception, ex:
     l(fun, str(ex) + ' Connect to ' + url + ' ----- FAIL')
     return False
   else:
-    if c.getinfo(c.HTTP_CODE) == 200:
+    if x == 200:
       l(fun, 'Connected to ' + url)
       return True
     else:
-      l(fun, url + ' ' + str(c.getinfo(c.HTTP_CODE)))
+      l(fun, url + ' ' + str(x))
       raise Exception('Unexpected HTTP Status Code')
-  c.close()
 
 def l(fun, content):
   comm.log_msg(config.__logfile__, fun, content)
