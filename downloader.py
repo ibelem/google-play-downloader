@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 # http://www.lfd.uci.edu/~gohlke/pythonlibs/#pycurl
-# C:\Python27\Scripts>pip --proxy http://proxy.cd.intel.com:911 install certifi
+# C:\Python27\Scripts>pip install certifi
 
 import sys, os
 import StringIO, zlib, re, lxml.html
