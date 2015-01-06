@@ -5,7 +5,7 @@
 # C:\Python27\Scripts>pip --proxy http://proxy.cd.intel.com:911 install certifi
 
 import sys, os
-import StringIO, zlib, re
+import StringIO, zlib, re, lxml.html
 import logging
 import pycurl, certifi
 import config, comm
@@ -78,6 +78,48 @@ def curl_request(url, method, ua, header, postdata, cookie):
     c.close()
     return (httpcode, httpresponse)
 
+def get_apk_info_by_package(package):
+    appinfo = {}
+    try:
+        url = "https://play.google.com/store/apps/details?id=" + package
+        ua = 'AndroidDownloadManager/4.4.2 (Linux; U; Android 4.4.2; Galaxy Nexus Build/JRO03E)'
+        x, y = curl_request(url, 'GET', ua, [], {}, '')
+        tree = lxml.html.fromstring(y.decode('utf-8'))
+        allContent = tree.xpath("//div[@class='content']/text()")
+        name = tree.xpath("//div[@class='document-title']/div/text()")[0].replace(","," ").replace("&amp;","&").strip()
+        version = allContent[3].replace(',','').strip()
+        size = allContent[1].replace(',','').strip()
+        price = tree.xpath("//meta[@itemprop='price']")[0].values()[0].strip()
+        appinfo['name'] = name
+        appinfo['version'] = version
+        appinfo['size'] = size
+        appinfo['price'] = price
+        appinfo['package'] = package
+        print appinfo
+        return appinfo
+    except Exception, ex:
+        print ex
+        pass
+
+def search_apk_list_by_keywords(keywords):
+  fun = 'search_apk_list_by_keywords'
+  l(fun, 'Searching package list of "'+ keywords + '"...')
+  d= {'q':keywords, 'c':'apps'}
+  url = 'https://play.google.com/store/search?' + urlencode(d)
+  ua = 'AndroidDownloadManager/4.4.2 (Linux; U; Android 4.4.2; Galaxy Nexus Build/JRO03E)'
+  x, y = curl_request(url, 'GET', ua, [], {}, '')
+  tree = lxml.html.fromstring(y)
+
+  elements = tree.find_class("title")
+  app_list = []
+  for element in elements:
+    item = lxml.html.tostring(element, pretty_print=True, encoding='utf-8')
+    if "href" in item:
+        package = item.split('"')[3].split('=')[1]
+        app_list.append(package)
+  print app_list
+  l(fun, 'Got package list of "'+ keywords + '".')
+  return app_list
 
 def download_apk(packagename):
   fun = 'download_apk'
@@ -87,12 +129,9 @@ def download_apk(packagename):
   cookies = 'MarketDA='+ apk_url.split('#')[1]
 
   try:
-
     ua = 'AndroidDownloadManager/4.4.2 (Linux; U; Android 4.4.2; Galaxy Nexus Build/JRO03E)'
     header = ['Accept-Encoding:']
     x, y = curl_request(real_url, 'GET', ua, header, {}, cookies)
-
-    print str(x)
     packageapk = packagename + '.apk'
     packagepath = os.path.join(scriptpath, 'apk', packageapk)
     with open(packagepath,'wb') as op:
@@ -136,7 +175,7 @@ def get_apk_url(packagename):
   fun = 'get_apk_url'
   l(fun, 'Fecthing APK URL ['+ packagename +']:')
   request = generate_request(packagename)
-  if len(request):
+  if request:
     url = 'https://android.clients.google.com/market/api/ApiRequest'
     ua = 'Android-Finsky/3.7.13 (api=3,versionCode=8013013,sdk=16,device=crespo,hardware=herring,product=soju)'
 
@@ -171,6 +210,7 @@ def get_apk_url(packagename):
           raise Exception('Unexpected HTTP Status Code')
       gzipped_content = y
       response = zlib.decompress(gzipped_content, 16 + zlib.MAX_WBITS)
+
       dl_url = ''
       dl_cookie = ''
 
@@ -200,7 +240,7 @@ def generate_request(packagename):
   try:
     l(fun, 'Generating requests:')
     googletoken = get_google_token()
-    if len(googletoken):
+    if googletoken:
       para = [googletoken, True, sdklevel, deviceid,
                       devicename, 'en', 'us', operator, operator,
                       operatorlist[country][operator], operatorlist[country][operator],
@@ -208,6 +248,7 @@ def generate_request(packagename):
       request = comm.generate_request(para)
       if request:
         l(fun, 'Generated requests')
+        print 'REQ:REQ:REQ:\n' + request
         return request
       else:
         return False
@@ -233,20 +274,22 @@ def get_google_token():
         'accountType': 'HOSTED_OR_GOOGLE'
     }
     x, y = curl_request(url, 'POST', ua, header, postdata, '')
-
     html = y.split('\n')
-    if html[0] == 'Error=BadAuthentication':
-        l(fun, 'Error=BadAuthentication ----- FAIL')
-        sys.exit(0)
-    auth = [i for i in html if i.find('Auth=') != -1]
-    if auth:
-        account_token = auth[0].split('=')[1]
-        if account_token != None:
-            l(fun, 'Google account token fetched, aloha')
-            return account_token
-        else:
-            l(fun, 'Get token failed')
-            raise Exception('Get token failed')
+    if html:
+        if html[0] == 'Error=BadAuthentication':
+            l(fun, 'Error=BadAuthentication ----- FAIL')
+            sys.exit(0)
+        auth = [i for i in html if i.find('Auth=') != -1]
+        if auth:
+            account_token = auth[0].split('=')[1]
+            if account_token != None:
+                l(fun, 'Google account token fetched, aloha')
+                return account_token
+            else:
+                l(fun, 'Get token failed')
+                raise Exception('Get token failed')
+    else:
+        raise Exception('Get token failed -- No contents in http response.')
   except Exception, ex:
     l(fun, str(ex))
     l(fun, 'Get account token ----- FAIL')
@@ -271,8 +314,19 @@ def url_connection(url):
 def l(fun, content):
   comm.log_msg(config.__logfile__, fun, content)
 
+def get_apk_list():
+    fun = 'get_apk_list'
+    apklist = []
+    for g in open(apkdllistpath, 'r'):
+        apklist.append(g.strip())
+    if apklist:
+        return apklist
+    else:
+       l(fun, 'No Android packages added in ' + apkdllistpath)
+       sys.exit(0)
+
 def run_apk_list():
-    fun = 'apk_list'
+    fun = 'run_apk_list'
     apklist = []
     for g in open(apkdllistpath, 'r'):
         apklist.append(g.strip())
