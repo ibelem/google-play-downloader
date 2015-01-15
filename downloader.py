@@ -122,27 +122,26 @@ def search_apk_list_by_keywords(keywords):
   return app_list
 
 def download_apk(packagename):
-  fun = 'download_apk'
-  l(fun, 'Downloading '+ packagename +' from Google Play...')
-  apk_url = get_apk_url(packagename)
-  real_url = apk_url.split('#')[0]
-  cookies = 'MarketDA='+ apk_url.split('#')[1]
-
-  try:
-    ua = 'AndroidDownloadManager/4.4.2 (Linux; U; Android 4.4.2; Galaxy Nexus Build/JRO03E)'
-    header = ['Accept-Encoding:']
-    x, y = curl_request(real_url, 'GET', ua, header, {}, cookies)
-    packageapk = packagename + '.apk'
-    packagepath = os.path.join(scriptpath, 'apk', packageapk)
-    with open(packagepath,'wb') as op:
-      op.write(y)
-    validate_apk(packageapk)
-    l(fun, 'Downloaded '+ packagename +' from Google Play')
-    l(fun, '-----------------------------------------------------------------------------------')
-  except Exception, ex:
-    l(fun, str(ex))
-    l(fun, 'Download '+ packagename +' from Google Play ----- FAIL')
-    l(fun, '-----------------------------------------------------------------------------------')
+    fun = 'download_apk'
+    l(fun, 'Downloading '+ packagename +' from Google Play...')
+    apk_url = get_apk_url(packagename)
+    try:
+        real_url = apk_url.split('#')[0]
+        cookies = 'MarketDA='+ apk_url.split('#')[1]
+        ua = 'AndroidDownloadManager/4.4.2 (Linux; U; Android 4.4.2; Galaxy Nexus Build/JRO03E)'
+        header = ['Accept-Encoding:']
+        x, y = curl_request(real_url, 'GET', ua, header, {}, cookies)
+        packageapk = packagename + '.apk'
+        packagepath = os.path.join(scriptpath, 'apk', packageapk)
+        with open(packagepath,'wb') as op:
+          op.write(y)
+        validate_apk(packageapk)
+        l(fun, 'Downloaded '+ packagename +' from Google Play')
+        l(fun, '-----------------------------------------------------------------------------------')
+    except Exception, ex:
+        l(fun, str(ex))
+        l(fun, 'Download '+ packagename +' from Google Play ----- FAIL')
+        l(fun, '-----------------------------------------------------------------------------------')
 
 def validate_apk(packageapk):
     fun = 'validate_apk'
@@ -248,7 +247,7 @@ def generate_request(packagename):
       request = comm.generate_request(para)
       if request:
         l(fun, 'Generated requests')
-        print 'REQ:REQ:REQ:\n' + request
+        #print 'REQ:REQ:REQ:\n' + request
         return request
       else:
         return False
@@ -318,7 +317,8 @@ def get_apk_list():
     fun = 'get_apk_list'
     apklist = []
     for g in open(apkdllistpath, 'r'):
-        apklist.append(g.strip())
+        if g.strip():
+            apklist.append(g.strip())
     if apklist:
         return apklist
     else:
@@ -329,7 +329,8 @@ def run_apk_list():
     fun = 'run_apk_list'
     apklist = []
     for g in open(apkdllistpath, 'r'):
-        apklist.append(g.strip())
+        if g.strip():
+            apklist.append(g.strip())
     if apklist:
         for i in apklist:
             download_apk(i)

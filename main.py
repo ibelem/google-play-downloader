@@ -20,18 +20,18 @@ def main():
     preconfig()
     #dl.url_connection('https://play.google.com')
 
-    #if(dl.url_connection('https://play.google.com')):
-    #    dl.run_apk_list()
+    if(dl.url_connection('https://play.google.com')):
+        dl.run_apk_list()
 
-    for i in dl.search_apk_list_by_keywords('test'):
-       dl.get_apk_info_by_package(i)
+    #for i in dl.search_apk_list_by_keywords('欧朋'):
+    #   dl.get_apk_info_by_package(i)
     #   dl.get_apk_url(i)
 
     #dl.get_apk_url('com.youdao.note')
     #dl.get_apk_url('com.funcity.taxi.passenger')
 
-    #for i in dl.get_apk_list():
-    #    dl.get_apk_info_by_package(i)
+    for i in dl.get_apk_list():
+        dl.get_apk_info_by_package(i)
 
 if __name__ == '__main__':
     sys.exit(main())
